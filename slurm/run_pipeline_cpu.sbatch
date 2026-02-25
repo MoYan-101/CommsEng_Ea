@@ -25,17 +25,27 @@ mkdir -p logs
 # Default env for this project.
 CONDA_ENV="${CONDA_ENV:-mlcpu}"
 ENV_MANAGER=""
+MICROMAMBA_BIN=""
 
 # Prefer micromamba first.
 if command -v micromamba >/dev/null 2>&1; then
-  eval "$(micromamba shell hook --shell=bash)"
-  micromamba activate "$CONDA_ENV"
-  ENV_MANAGER="micromamba"
+  MICROMAMBA_BIN="$(command -v micromamba)"
+elif [ -x "$HOME/bin/micromamba" ]; then
+  MICROMAMBA_BIN="$HOME/bin/micromamba"
 elif [ -x "$HOME/.local/bin/micromamba" ]; then
-  eval "$("$HOME/.local/bin/micromamba" shell hook --shell=bash)"
-  micromamba activate "$CONDA_ENV"
-  ENV_MANAGER="micromamba"
-else
+  MICROMAMBA_BIN="$HOME/.local/bin/micromamba"
+fi
+
+if [ -n "$MICROMAMBA_BIN" ]; then
+  eval "$("$MICROMAMBA_BIN" shell hook --shell=bash)"
+  if micromamba activate "$CONDA_ENV" >/dev/null 2>&1; then
+    ENV_MANAGER="micromamba"
+  else
+    echo "[WARN] micromamba activate '$CONDA_ENV' failed; fallback to conda/.venv."
+  fi
+fi
+
+if [ -z "$ENV_MANAGER" ]; then
   # Fallback to conda for non-interactive shells.
   if ! command -v conda >/dev/null 2>&1; then
     for conda_sh in \
