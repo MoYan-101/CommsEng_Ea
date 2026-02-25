@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=MY-CE1
-#SBATCH --output=slurm-%x-%j.out
-#SBATCH --error=slurm-%x-%j.err
+#SBATCH --output=logs/slurm-%x-%j.out
+#SBATCH --error=logs/slurm-%x-%j.err
 #SBATCH --partition=normal
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -12,22 +12,58 @@
 set -euo pipefail
 
 # Default to the submit directory; override with:
-#   sbatch --export=ALL,PROJECT_DIR=/path/to/case_alpha_0_0_colab ...
+#   sbatch --export=ALL,PROJECT_DIR=/path/to/CommsEng ...
 PROJECT_DIR="${PROJECT_DIR:-$SLURM_SUBMIT_DIR}"
 cd "$PROJECT_DIR"
+mkdir -p logs
 
 # Optional module loading (uncomment and adapt for your cluster).
 # module purge
 # module load anaconda/2024.02
 
-# Prefer conda env; fallback to local .venv.
-if command -v conda >/dev/null 2>&1; then
-  eval "$(conda shell.bash hook)"
-  CONDA_ENV="${CONDA_ENV:-comms310}"
-  conda activate "$CONDA_ENV"
-elif [ -f ".venv/bin/activate" ]; then
-  source .venv/bin/activate
+# Prefer conda/micromamba env; fallback to local .venv.
+# Default env for this project.
+CONDA_ENV="${CONDA_ENV:-mlcpu}"
+ENV_MANAGER=""
+
+# Prefer micromamba first.
+if command -v micromamba >/dev/null 2>&1; then
+  eval "$(micromamba shell hook --shell=bash)"
+  micromamba activate "$CONDA_ENV"
+  ENV_MANAGER="micromamba"
+elif [ -x "$HOME/.local/bin/micromamba" ]; then
+  eval "$("$HOME/.local/bin/micromamba" shell hook --shell=bash)"
+  micromamba activate "$CONDA_ENV"
+  ENV_MANAGER="micromamba"
+else
+  # Fallback to conda for non-interactive shells.
+  if ! command -v conda >/dev/null 2>&1; then
+    for conda_sh in \
+      "$HOME/miniconda3/etc/profile.d/conda.sh" \
+      "$HOME/anaconda3/etc/profile.d/conda.sh" \
+      "/opt/conda/etc/profile.d/conda.sh"
+    do
+      if [ -f "$conda_sh" ]; then
+        # shellcheck source=/dev/null
+        source "$conda_sh"
+        break
+      fi
+    done
+  fi
+
+  if command -v conda >/dev/null 2>&1; then
+    eval "$(conda shell.bash hook)"
+    conda activate "$CONDA_ENV"
+    ENV_MANAGER="conda"
+  elif [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+    ENV_MANAGER=".venv"
+  else
+    echo "[ERROR] Python env not found: env='$CONDA_ENV' unavailable via micromamba/conda and .venv missing."
+    exit 1
+  fi
 fi
+echo "[INFO] ENV_MANAGER=$ENV_MANAGER CONDA_ENV=$CONDA_ENV PYTHON=$(command -v python)"
 
 # IMPORTANT: run.sh is interactive if OVERFIT_ALPHA_LIST is unset.
 export OVERFIT_ALPHA_LIST="${OVERFIT_ALPHA_LIST:-0.0}"

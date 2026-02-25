@@ -1,87 +1,162 @@
-﻿# SLURM 使用说明
+﻿# SLURM 使用说明（CommsEng）
 
-这个项目的完整入口流程是：
+本文档是当前项目的标准提交流程（现在的主目录是 `CommsEng`）。
+
+完整流水线入口：
 
 - `run.sh` -> `train.py` -> `inference.py` -> `visualization.py`
 
-可用的 SLURM 模板：
+可用的 SLURM 脚本：
 
-- `slurm/run_pipeline_cpu.sbatch`
-- `slurm/run_pipeline_array_cpu.sbatch`（通过 job array 并行多个 alpha）
+- `slurm/run_pipeline_cpu.sbatch`（单任务）
+- `slurm/run_pipeline_array_cpu.sbatch`（job array 并行多个 alpha）
 
-## 1）集群上一次性环境准备
-
-在项目根目录执行：
+## 1）登录后第一步（每次会话）
 
 ```bash
-cd /path/to/case_alpha_0_0_colab
+cd /path/to/CommsEng
+pwd
+chmod +x run.sh slurm/*.sbatch
+mkdir -p logs
+```
+
+## 2）环境准备（首次或环境丢失时）
+
+推荐 conda 环境名：`mlcpu`。
+
+```bash
+cd /path/to/CommsEng
+conda create -n mlcpu python=3.10 -y
+conda activate mlcpu
+python -m pip install -U pip
 python -m pip install -r requirements.txt
 ```
 
-如果集群使用 conda，建议创建/使用 `comms310`（与 `run.sh` 默认一致）。
+说明：`sbatch` 脚本里已经包含了非交互 shell 的环境激活逻辑，默认优先 `micromamba`，再回退 `conda`（会尝试 `conda.sh`），最后回退 `.venv`。
+默认 `CONDA_ENV=mlcpu`。如果未来你换环境名，提交时用 `--export=ALL,CONDA_ENV=<你的环境名>` 覆盖即可。
+`sbatch` 已同时支持 `micromamba` 和 `conda` 激活（优先 `micromamba`，其次 `conda`）。
 
-## 2）检查数据路径
-
-当前数据文件路径配置在：
-
-- `configs/config.yaml`
-
-请确保 `data.path` 在计算节点可访问。
-
-## 3）提交单个完整流水线任务
+如果你已经创建过 `mlcpu` 环境，则无需重复创建，直接激活并验证即可：
 
 ```bash
-cd /path/to/case_alpha_0_0_colab
-sbatch --export=ALL,CONDA_ENV=comms310,OVERFIT_ALPHA_LIST=0.0 slurm/run_pipeline_cpu.sbatch
+conda activate mlcpu
+python -V
+python -c "import sys; print(sys.executable)"
 ```
 
-默认单任务资源：`16 CPU / 64G / 120h`。
+## 2.1）安装前检查 Python 版本
 
-也可以在一个任务里串行跑多个 alpha：
+在安装依赖前，先确认当前 `python` 不是系统 Python 3.6：
 
 ```bash
-sbatch --export=ALL,CONDA_ENV=comms310,OVERFIT_ALPHA_LIST=0.0,0.03,0.05 slurm/run_pipeline_cpu.sbatch
+which python
+python -V
+python -c "import sys; print(sys.executable)"
+python -m pip -V
 ```
 
-## 3.1）提交一个 job array（并行多个 alpha）
+期望结果：
 
-脚本内置默认 alpha：
+- Python 版本是 `3.10.x`（或至少 `>=3.9`）。
+- `sys.executable` 指向你的 conda 环境（如 `.../envs/mlcpu/bin/python`）。
+- 不应是 `/usr/bin/python3` 或 Python 3.6。
 
-- `0.0,0.01,0.03,0.05,0.07`
-
-一次提交 5 个 alpha（默认最多同时运行 4 个，见 `--array=0-4%4`）：
+如果不是期望结果，先执行：
 
 ```bash
-cd /path/to/case_alpha_0_0_colab
-sbatch --export=ALL,CONDA_ENV=comms310 slurm/run_pipeline_array_cpu.sbatch
+source ~/miniconda3/etc/profile.d/conda.sh 2>/dev/null || source ~/anaconda3/etc/profile.d/conda.sh
+conda activate mlcpu
 ```
 
-默认每个 array 子任务资源：`8 CPU / 32G / 120h`。
-
-自定义 alpha 示例：
+## 3）提交前 30 秒自检
 
 ```bash
+cd /path/to/CommsEng
+grep -n "path:" configs/config.yaml
+ls -lh data/Main_20260128_cleansed.csv
+```
+
+请确保 `configs/config.yaml` 的 `data.path` 在计算节点可访问。
+
+## 4）提交单任务（CPU）
+
+默认资源（已写入脚本）：`16 CPU / 64G / 120h`。
+当前脚本默认环境就是 `mlcpu`，所以 `CONDA_ENV` 可省略；显式写上更清晰。
+
+```bash
+cd /path/to/CommsEng
+mkdir -p logs
+sbatch --export=ALL,CONDA_ENV=mlcpu,OVERFIT_ALPHA_LIST=0.0 slurm/run_pipeline_cpu.sbatch
+```
+
+一个任务串行跑多个 alpha：
+
+```bash
+cd /path/to/CommsEng
+mkdir -p logs
+sbatch --export=ALL,CONDA_ENV=mlcpu,OVERFIT_ALPHA_LIST=0.0,0.03,0.05 slurm/run_pipeline_cpu.sbatch
+```
+
+## 5）提交 array（推荐并行模式）
+
+默认 alpha 列表：`0.0,0.01,0.03,0.05,0.07`
+
+默认资源（每个子任务）：`8 CPU / 32G / 120h`  
+默认并发上限：`--array=0-4%4`（5 个任务最多同时跑 4 个）
+当前脚本默认环境就是 `mlcpu`，所以 `CONDA_ENV` 可省略；显式写上更清晰。
+
+```bash
+cd /path/to/CommsEng
+mkdir -p logs
+sbatch --export=ALL,CONDA_ENV=mlcpu slurm/run_pipeline_array_cpu.sbatch
+```
+
+自定义 alpha：
+
+```bash
+cd /path/to/CommsEng
 export ALPHA_LIST="0.0,0.02,0.04"
-sbatch --array=0-2%3 --export=ALL,CONDA_ENV=comms310 slurm/run_pipeline_array_cpu.sbatch
+mkdir -p logs
+sbatch --array=0-2%3 --export=ALL,CONDA_ENV=mlcpu slurm/run_pipeline_array_cpu.sbatch
 ```
 
-## 4）查看任务状态和日志
+## 6）查看运行状态与日志
 
 ```bash
 squeue -u "$USER"
-tail -f slurm-MY-CE1-<jobid>.out
-# array 任务日志文件名示例：
-tail -f slurm-MY-CE1-<jobid>_<taskid>.out
+squeue -u "$USER" -o "%.18i %.9P %.20j %.8u %.2t %.10M %.6D %R"
 ```
 
-## 5）注意事项
-
-- 如果不设置 `OVERFIT_ALPHA_LIST`，`run.sh` 会进入交互输入模式；在 SLURM 中务必设置。
-- CPU 资源由 `--cpus-per-task` 决定，并会映射到 `MODEL_N_JOBS`、`XGB_N_JOBS` 等并行参数。
-- 如果你要在同一目录并发提交多个普通任务（非 array），建议显式给唯一 `RUN_ID`：
+看日志：
 
 ```bash
-sbatch --export=ALL,CONDA_ENV=comms310,OVERFIT_ALPHA_LIST=0.0,RUN_ID=slurm_$(date +%Y%m%d_%H%M%S) slurm/run_pipeline_cpu.sbatch
+# 单任务
+tail -f logs/slurm-MY-CE1-<jobid>.out
+
+# array 子任务
+tail -f logs/slurm-MY-CE1-<jobid>_<taskid>.out
 ```
 
-- 在 array 脚本中，已自动关闭并发保护（已设置 `ALLOW_CONCURRENT_PIPELINE=1` 和 `ALLOW_CONCURRENT_TRAIN=1`）。
+## 7）结果目录
+
+每个 alpha/run_id 的产物主要在：
+
+- `models/<csv_name>/<run_id>/...`
+- `postprocessing/<csv_name>/<run_id>/...`
+- `evaluation/figures/<csv_name>/<run_id>/...`
+
+## 8）常见问题
+
+- `OVERFIT_ALPHA_LIST` 没设置：`run.sh` 会进入交互输入，SLURM 里务必通过 `--export` 或 array 传入。
+- 想并发多个普通任务（非 array）：建议显式设置唯一 `RUN_ID`，避免结果覆盖：
+
+```bash
+sbatch --export=ALL,CONDA_ENV=mlcpu,OVERFIT_ALPHA_LIST=0.0,RUN_ID=slurm_$(date +%Y%m%d_%H%M%S) slurm/run_pipeline_cpu.sbatch
+```
+
+- array 脚本已自动关闭并发保护（已设置 `ALLOW_CONCURRENT_PIPELINE=1` 与 `ALLOW_CONCURRENT_TRAIN=1`）。
+- `minepy` 编译失败（常见于老系统/缺少编译工具链）：可先跳过 `minepy`，其功能会自动回退到 `dcor/Pearson`。更新代码后直接执行：
+
+```bash
+python -m pip install --prefer-binary -r requirements.txt
+```

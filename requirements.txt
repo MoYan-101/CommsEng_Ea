@@ -20,3 +20,4 @@ XlsxWriter
 plotly
 dcor
 minepy
+chardet

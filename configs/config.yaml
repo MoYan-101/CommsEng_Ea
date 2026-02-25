@@ -116,8 +116,8 @@ inference:
   models: ["RF", "CatBoost", "DT", "ANN", "XGB", "SVM"]
   max_combinations: 200
   n_points: 50                 # ← 原来就有的话保留
-  enable_3d_heatmap: false # ← 3DHeatmap-X 总开关
-  #skip_3d_models: ["SVM"]      # ← 可选：指定模型跳过 3D
+  enable_3d_heatmap: true # ← 3DHeatmap-X 总开关
+  skip_3d_models: ["SVM"]      # ← 可选：指定模型跳过 3D
   heatmap_axes: # ← 统一写这里，长度决定维度
     - "Temperature (°C)"
     - "GHSV (mL/g.h) (LN scale)"

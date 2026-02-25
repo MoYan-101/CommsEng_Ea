@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=MY-CE1
-#SBATCH --output=slurm-%x-%A_%a.out
-#SBATCH --error=slurm-%x-%A_%a.err
+#SBATCH --output=logs/slurm-%x-%A_%a.out
+#SBATCH --error=logs/slurm-%x-%A_%a.err
 #SBATCH --partition=normal
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -19,18 +19,54 @@ ALPHA_LIST="${ALPHA_LIST:-0.0,0.01,0.03,0.05,0.07}"
 
 PROJECT_DIR="${PROJECT_DIR:-$SLURM_SUBMIT_DIR}"
 cd "$PROJECT_DIR"
+mkdir -p logs
 
 # Optional module loading (adapt for your cluster).
 # module purge
 # module load anaconda/2024.02
 
-if command -v conda >/dev/null 2>&1; then
-  eval "$(conda shell.bash hook)"
-  CONDA_ENV="${CONDA_ENV:-comms310}"
-  conda activate "$CONDA_ENV"
-elif [ -f ".venv/bin/activate" ]; then
-  source .venv/bin/activate
+# Default env for this project.
+CONDA_ENV="${CONDA_ENV:-mlcpu}"
+ENV_MANAGER=""
+
+# Prefer micromamba first.
+if command -v micromamba >/dev/null 2>&1; then
+  eval "$(micromamba shell hook --shell=bash)"
+  micromamba activate "$CONDA_ENV"
+  ENV_MANAGER="micromamba"
+elif [ -x "$HOME/.local/bin/micromamba" ]; then
+  eval "$("$HOME/.local/bin/micromamba" shell hook --shell=bash)"
+  micromamba activate "$CONDA_ENV"
+  ENV_MANAGER="micromamba"
+else
+  # Fallback to conda for non-interactive shells.
+  if ! command -v conda >/dev/null 2>&1; then
+    for conda_sh in \
+      "$HOME/miniconda3/etc/profile.d/conda.sh" \
+      "$HOME/anaconda3/etc/profile.d/conda.sh" \
+      "/opt/conda/etc/profile.d/conda.sh"
+    do
+      if [ -f "$conda_sh" ]; then
+        # shellcheck source=/dev/null
+        source "$conda_sh"
+        break
+      fi
+    done
+  fi
+
+  if command -v conda >/dev/null 2>&1; then
+    eval "$(conda shell.bash hook)"
+    conda activate "$CONDA_ENV"
+    ENV_MANAGER="conda"
+  elif [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+    ENV_MANAGER=".venv"
+  else
+    echo "[ERROR] Python env not found: env='$CONDA_ENV' unavailable via micromamba/conda and .venv missing."
+    exit 1
+  fi
 fi
+echo "[INFO] ENV_MANAGER=$ENV_MANAGER CONDA_ENV=$CONDA_ENV PYTHON=$(command -v python)"
 
 # Parse alpha list.
 ALPHA_CLEAN="$(echo "$ALPHA_LIST" | tr ',;' '  ')"
