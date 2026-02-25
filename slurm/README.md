@@ -150,3 +150,14 @@ sbatch --export=ALL,CONDA_ENV=mlcpu,OVERFIT_ALPHA_LIST=0.0,RUN_ID=slurm_$(date +
 
 - 一次真实作业的资源画像：`sacct -j <jobid> --format=JobID,Elapsed,TotalCPU,MaxRSS,AllocCPUS,State`
 - 当前账号是否必须指定 `--account` / `--qos`（若管理员有硬性要求）
+
+## 20260225运行：
+cd /public/home/user2/CommsEng
+mkdir -p logs
+sbatch --export=ALL,CONDA_ENV=/public/home/user2/micromamba/envs/mlcpu slurm/run_pipeline_array_cpu.sbatch
+
+这会使用脚本默认：
+--array=0-4%5
+ALPHA_LIST=0.0,0.01,0.03,0.05,0.07
+job name: MY-CE1
+
