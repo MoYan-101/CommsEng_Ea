@@ -115,8 +115,8 @@ evaluation:
 
 # 推断相关（不作修改）
 inference:
-  models: ["RF", "CatBoost", "DT", "ANN", "XGB", "SVM"]
-  max_combinations: 200
+  models: ["CatBoost", "XGB", "SVM"]
+  max_combinations: null
   n_points: 50                 # ← 原来就有的话保留
   enable_3d_heatmap: true # ← 3DHeatmap-X 总开关
   skip_3d_models: ["SVM"]      # ← 可选：指定模型跳过 3D
@@ -127,20 +127,13 @@ inference:
   confusion_axes:
     row_name: "Promoter 1"
     col_name: "Type of sysnthesis procedure"
-  confusion_axes_by_model:
-    SVM:
-      row_name: "Promoter 1"
-      col_name: "Promoter 2"
-    CatBoost:
-      row_name: "Promoter 1"
-      col_name: "Promoter 2"
 
 # Optuna 调参配置
 optuna:
   overfit_penalty_alpha: 0.0
   enable: true
   n_jobs: 1
-  trials: 10
+  trials: 800
   models: ["RF", "CatBoost", "DT", "ANN", "XGB", "SVM"]
   slice_params:
     ANN: ["hidden_dims", "learning_rate", "dropout", "weight_decay", "batch_size"]
