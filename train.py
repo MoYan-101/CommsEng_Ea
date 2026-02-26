@@ -808,6 +808,15 @@ def train_main():
         return_dataframe=False
     ))
 
+    actual_out_dim = int(Y.shape[1]) if Y.ndim > 1 else 1
+    config_out_dim = int(config["data"]["output_len"])
+    if actual_out_dim != config_out_dim:
+        raise ValueError(
+            f"Output dimension mismatch: data has {actual_out_dim} target column(s), "
+            f"but config.data.output_len={config_out_dim}. "
+            "Please align `data_loader.y_cols` and `data.output_len`."
+        )
+
     # 基础特征矩阵（已包含 base log 变换）
     X_base = X
 

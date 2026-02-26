@@ -2,9 +2,9 @@
 # ---------------------------------------------------------
 # 数据相关
 data:
-  path: "./data/Main_20260128_cleansed.csv"        # Read the data
+  path: "./data/Ea_20260226_cleansed.csv"        # Read the data
   input_len: 13      # ← 你想改就改
-  output_len: 4
+  output_len: 1
   test_size: 0.3
   random_seed: 98 #123, 42, 36
 
@@ -12,11 +12,13 @@ data:
 data_loader:
   impute_method: "kde"
   preserve_null: true
+  y_cols:
+    - "Methanol based Ea (kJ/mol)"
   # 仅生成诊断报告，不影响训练数据
   save_conflict_report: false
   conflict_report_prefix: "duplicate_input"
   # conflict_report_dir: "./data"
-  aggregate_duplicate_inputs: true
+  aggregate_duplicate_inputs: false
   duplicate_target_agg: "median"
   promoter_ratio_cols:
     - "Promoter 1 ratio (Promoter 1:Cu)"
@@ -138,7 +140,7 @@ optuna:
   overfit_penalty_alpha: 0.0
   enable: true
   n_jobs: 1
-  trials: 1400
+  trials: 10
   models: ["RF", "CatBoost", "DT", "ANN", "XGB", "SVM"]
   slice_params:
     ANN: ["hidden_dims", "learning_rate", "dropout", "weight_decay", "batch_size"]

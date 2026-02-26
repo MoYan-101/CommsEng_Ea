@@ -124,8 +124,8 @@ squeue -u "$USER" -o "%.18i %.9P %.20j %.8u %.2t %.10M %.6D %R"
 ```
 
 ```bash
-tail -f logs/slurm-MY-CE1-<jobid>.out
-tail -f logs/slurm-MY-CE1-<jobid>_<taskid>.out
+tail -f logs/slurm-MY-CE-Ea-<jobid>.out
+tail -f logs/slurm-MY-CE-Ea-<jobid>_<taskid>.out
 ```
 
 ## 7）结果目录
@@ -159,5 +159,4 @@ sbatch --export=ALL,CONDA_ENV=/public/home/user2/micromamba/envs/mlcpu slurm/run
 这会使用脚本默认：
 --array=0-4%5
 ALPHA_LIST=0.0,0.01,0.03,0.05,0.07
-job name: MY-CE1
-
+job name: MY-CE-Ea

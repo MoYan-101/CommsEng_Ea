@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=MY-CE1
+#SBATCH --job-name=MY-CE-Ea
 #SBATCH --output=logs/slurm-%x-%A_%a.out
 #SBATCH --error=logs/slurm-%x-%A_%a.err
 #SBATCH --partition=normal
