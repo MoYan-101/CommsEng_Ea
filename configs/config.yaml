@@ -110,6 +110,7 @@ evaluation:
   save_data_analysis_plots: true #一会改回来
   do_cross_validation: true      # 是否进行 KFold 交叉验证
   save_shap: true #一会改回来
+  shap_group_by_raw_features: true
   save_multi_model_residual_plot: true #一会改回来
   save_optuna: true #一会改回来
 
@@ -133,7 +134,7 @@ optuna:
   overfit_penalty_alpha: 0.0
   enable: true
   n_jobs: 1
-  trials: 800
+  trials: 1400
   models: ["RF", "CatBoost", "DT", "ANN", "XGB", "SVM"]
   slice_params:
     ANN: ["hidden_dims", "learning_rate", "dropout", "weight_decay", "batch_size"]

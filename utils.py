@@ -119,57 +119,88 @@ def safe_filename(name):
 # --------------- correlation ---------------
 def short_label(s: str) -> str:
     """
-    根据下划线将字符串分割，取最后一段，并做以下处理：
-      - 若最后一段全是大写 (如 "CO", "OH")，则原样返回
-      - 特定化学符号进行特例转换（如 "cu(oh)2" -> "Cu(OH)2"）
-      - 其余情况：首字母大写，其他部分保持原状
+    Keep feature labels readable without dropping semantic tokens.
     """
     special_chemicals = {
-        # --- 单纯化学式：\mathrm 保持直立 ---
-        "cu":  r"$\mathrm{Cu}$",
+        "cu": r"$\mathrm{Cu}$",
         "cu(oh)2": r"$\mathrm{Cu(OH)_{2}}$",
-        "cuxo":    r"$\mathrm{Cu_{X}O}$",
-        "cu2s":    r"$\mathrm{Cu_{2}S}$",
+        "cuxo": r"$\mathrm{Cu_{X}O}$",
+        "cu2s": r"$\mathrm{Cu_{2}S}$",
         "cu2(oh)2co3": r"$\mathrm{Cu_{2}(OH)_{2}CO_{3}}$",
         "c2+": r"$\mathrm{C_{2+}}$",
-        "c1":  r"$\mathrm{C_{1}}$",
-        "h2":  r"$\mathrm{H_{2}}$",
-
-        # --- 长文本也放在 \mathrm{}，空格用 '\ ' ---
+        "c1": r"$\mathrm{C_{1}}$",
+        "h2": r"$\mathrm{H_{2}}$",
         "catalyst surface area (m2/g) (ln scale)":
             r"$\mathrm{Catalyst\ surface\ area\ (m^{2}/g)\ (LN\ scale)}$",
-
         "h2/co2 ratio (-)":
             r"$\mathrm{H_{2}/CO_{2}\ ratio\ (-)}$",
-
         "ch3oh (g/kg·h) (ln scale)":
             r"$\mathrm{STY\_CH_{3}OH\ (g/kg\!\cdot\!h)\ (LN\ scale)}$",
-
+        "ch3oh (g/kg路h) (ln scale)":
+            r"$\mathrm{STY\_CH_{3}OH\ (g/kg\!\cdot\!h)\ (LN\ scale)}$",
         "co2 conversion efficiency (%)":
-            r"$\mathrm{CO_{2}\ conversion\ efficiency\ (\%)}$"
-}
+            r"$\mathrm{CO_{2}\ conversion\ efficiency\ (\%)}$",
+    }
 
+    inter_metric_alias = {
+        "ratio_sum": "ratio sum",
+        "ratio_diff": "ratio diff",
+        "ratio_abs_diff": "ratio abs diff",
+        "ratio_prod": "ratio product",
+        "ratio_share_left": "ratio share left",
+        "ratio_share_right": "ratio share right",
+        "ratio_min": "ratio min",
+        "ratio_max": "ratio max",
+        "ratio_balance": "ratio balance",
+        "embed_dot": "embedding dot",
+        "embed_cosine": "embedding cosine",
+        "embed_l2": "embedding L2 distance",
+        "embed_weighted_dot": "embedding weighted dot",
+        "same_material": "same material",
+        "any_null": "any null",
+        "both_null": "both null",
+        "both_non_null": "both non-null",
+    }
 
-    s = str(s)
-    parts = s.split('_')
-    last_part = parts[-1]  # 取最后一段
+    raw = str(s).strip()
+    if not raw:
+        return raw
 
-    # 若最后一段是空字符串
-    if not last_part:
-        return s  # 避免空标签
+    low_raw = raw.lower()
+    if low_raw in special_chemicals:
+        return special_chemicals[low_raw]
 
-    # 先检查是否属于特例化学符号
-    lower_last_part = last_part.lower()  # 转小写匹配
-    if lower_last_part in special_chemicals:
-        return special_chemicals[lower_last_part]
+    # Engineered interaction features: "<left>__x__<right>__<metric>".
+    if "__x__" in raw and "__" in raw:
+        left, rest = raw.split("__x__", 1)
+        if "__" in rest:
+            right, metric = rest.split("__", 1)
+            m_low = metric.lower()
+            if m_low.startswith("pair__"):
+                pair_token = metric[len("pair__"):]
+                if pair_token == "__OTHER__":
+                    pair_desc = "pair=OTHER"
+                elif "__PAIR__" in pair_token:
+                    p_left, p_right = pair_token.split("__PAIR__", 1)
+                    pair_desc = f"pair({p_left} | {p_right})"
+                else:
+                    pair_desc = f"pair={pair_token}"
+                return f"{left} x {right} {pair_desc}"
+            metric_name = inter_metric_alias.get(
+                m_low,
+                metric.replace("__", " ").replace("_", " ")
+            )
+            return f"{left} x {right} {metric_name}"
 
-    # 如果最后一段全是大写 (含数字/符号不影响 isupper，只要字母全大写即可)
-    if last_part.isupper():
-        return last_part
+    # Preserve key parts for regular encoded names (e.g. one-hot columns).
+    if "__" in raw:
+        parts = [p for p in raw.split("__") if p]
+        if len(parts) >= 2:
+            return f"{parts[0]}: {' '.join(parts[1:])}"
 
-    # 否则，仅将首字母转大写，其余部分保持原状
-    return last_part[0].upper() + last_part[1:]
-
+    if raw.isupper():
+        return raw
+    return raw
 def only_positive_formatter(x, pos):
     """
     自定义 Formatter:
@@ -689,6 +720,87 @@ def merge_onehot_shap(shap_data, onehot_groups, case_map=None):
     new_sd["shap_values"] = new_shap_list if shap_is_list else new_shap_list[0]
     new_sd["X_full"]      = new_data
     new_sd["x_col_names"] = new_col_names
+    return new_sd
+
+
+def merge_shap_to_raw_features(shap_data):
+    """
+    Aggregate engineered SHAP columns back to raw input feature names.
+
+    Mapping rules:
+      - "<A>__x__<B>__..."  -> split 50/50 to A and B
+      - "<A>__..."          -> map to A
+      - otherwise           -> keep original name
+    """
+    shap_values = shap_data["shap_values"]
+    X_full = shap_data.get("X_full", None)
+    col_names = list(shap_data["x_col_names"])
+
+    shap_is_list = isinstance(shap_values, list)
+    shap_list = shap_values if shap_is_list else [shap_values]
+
+    def _source_features(col: str) -> list[str]:
+        text = str(col).strip()
+        if not text:
+            return [text]
+
+        if "__x__" in text:
+            left, right_part = text.split("__x__", 1)
+            if "__" in right_part:
+                right = right_part.split("__", 1)[0]
+                left = left.strip()
+                right = right.strip()
+                if left and right:
+                    if left == right:
+                        return [left]
+                    return [left, right]
+
+        if "__" in text:
+            head = text.split("__", 1)[0].strip()
+            if head:
+                return [head]
+
+        return [text]
+
+    # Preserve first-seen order of raw features.
+    raw_names: list[str] = []
+    raw_to_idx: dict[str, int] = {}
+    col_targets: list[list[int]] = []
+    for col in col_names:
+        targets = []
+        for raw_name in _source_features(col):
+            if raw_name not in raw_to_idx:
+                raw_to_idx[raw_name] = len(raw_names)
+                raw_names.append(raw_name)
+            targets.append(raw_to_idx[raw_name])
+        col_targets.append(targets)
+
+    def _aggregate(arr: np.ndarray) -> np.ndarray:
+        arr2 = np.asarray(arr)
+        if arr2.ndim != 2:
+            raise ValueError(f"Expected 2D array, got shape={arr2.shape}")
+        if arr2.shape[1] != len(col_names):
+            raise ValueError(
+                f"Column mismatch: array has {arr2.shape[1]} cols, "
+                f"but x_col_names has {len(col_names)}"
+            )
+
+        out = np.zeros((arr2.shape[0], len(raw_names)), dtype=np.float64)
+        for j, targets in enumerate(col_targets):
+            if not targets:
+                continue
+            w = 1.0 / float(len(targets))
+            for t in targets:
+                out[:, t] += arr2[:, j] * w
+        return out.astype(np.float32)
+
+    new_shap_list = [_aggregate(np.asarray(sv)) for sv in shap_list]
+    new_x = _aggregate(np.asarray(X_full)) if X_full is not None else None
+
+    new_sd = copy.deepcopy(shap_data)
+    new_sd["shap_values"] = new_shap_list if shap_is_list else new_shap_list[0]
+    new_sd["X_full"] = new_x
+    new_sd["x_col_names"] = raw_names
     return new_sd
 
 #####################################################

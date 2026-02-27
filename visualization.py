@@ -42,6 +42,7 @@ from utils import (
     plot_loss_curve,
     plot_joint_scatter_with_marginals,
     merge_onehot_shap,
+    merge_shap_to_raw_features,
     plot_shap_combined,
     plot_shap_importance_multi_output,
     plot_local_shap_force,
@@ -167,6 +168,9 @@ def generate_shap_plots(csv_name, model_types, top_n, config=None):
     onehot_groups = meta_data["onehot_groups"]
     orig_case_map = {c.lower(): c for c in meta_data["x_col_names"]}
 
+    eval_cfg = (config or {}).get("evaluation", {})
+    shap_group_by_raw = bool(eval_cfg.get("shap_group_by_raw_features", True))
+
     for mtype in model_types:
         shap_dir = get_eval_dir(csv_name, run_id, "model_comparison", mtype, "shap")
         ensure_dir(shap_dir)
@@ -179,9 +183,13 @@ def generate_shap_plots(csv_name, model_types, top_n, config=None):
         # ----- 1) 读入 & 合并 one-hot -----
         raw_shap_data = joblib.load(shap_data_path)
         raw_shap_data = _normalize_shap_values(raw_shap_data)
-        shap_data = merge_onehot_shap(raw_shap_data,
-                                      onehot_groups=onehot_groups,
-                                      case_map=orig_case_map)   # 不想恢复大小写就传 None
+        shap_data = merge_onehot_shap(
+            raw_shap_data,
+            onehot_groups=onehot_groups,
+            case_map=orig_case_map
+        )
+        if shap_group_by_raw:
+            shap_data = merge_shap_to_raw_features(shap_data)
 
         # ----- 2) 全局图 -----
         try:
