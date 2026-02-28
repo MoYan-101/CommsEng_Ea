@@ -107,3 +107,39 @@ The default pipeline is implemented in `data_preprocessing/data_loader_modified.
 ## Notes
 - 3D heatmaps can be slow. Use `skip_3d_models` and `max_combinations` to control cost.
 - SVM SHAP uses KernelExplainer and can be slow on large datasets.
+
+## 对数变换与展示尺度说明（当前配置）
+以下逻辑对应当前 `configs/config.yaml`。
+
+1. 基础规则
+- 仅对 `data_loader.log_transform_cols` 指定的数值列做对数变换，公式为：
+  `x -> ln(max(x, eps))`，其中 `eps = data_loader.log_transform_eps`（当前为 `1e-8`）。
+- 列名中已明确标注 `(LN scale)` 的数据，视为“已在对数域”，不再重复做 `ln`。
+
+2. 当前会做对数变换的列
+- 全模型（`RF/DT/CatBoost/XGB/ANN/SVM`）：
+  - `Calcination time (h)`
+  - `Molar ratio (Zn:Cu)`
+- 仅额外对 `ANN/SVM` 生效（`log_transform_cols_extra_for`）：
+  - `H2/CO2 ratio (-)`
+  - `Promoter 1 ratio (Promoter 1:Cu)`
+  - `Promoter 2 ratio (Promoter 2:Cu)`
+
+3. 当前已是 LN scale、不会再做对数变换的列
+- `Catalyst surface area (m2/g) (LN scale)`
+- `GHSV (mL/g.h) (LN scale)`
+
+4. 训练阶段
+- 在数据加载阶段先完成上述 `ln(max(x, eps))` 处理。
+- 随后再进行训练/验证划分与标准化。
+- 模型学习发生在“对数后 + 标准化后”的输入空间中。
+
+5. 推断与热图阶段
+- 外部可视化网格（`grid_x/grid_y/grid_z`）按原始物理尺度生成与保存。
+- 若某轴属于对数列，则仅在送入模型前临时执行同样的 `ln(max(x, eps))`。
+- 然后再进入与训练一致的标准化与预测流程，保证输入域一致且外部显示保持原始单位。
+
+6. SHAP 展示阶段
+- SHAP 值本身仍对应模型输入域。
+- 用于展示的特征值会先逆标准化，再对对数列执行 `exp` 还原到原始尺度。
+- 同时保留模型域副本用于追踪（例如 `X_full_model_domain`），并额外保存展示域数据文件。

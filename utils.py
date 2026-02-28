@@ -2021,7 +2021,6 @@ def plot_multi_model_residual_distribution_single_dim(
     edges = base_edges + bin_width/2
 
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-    plt.rcParams["font.size"] = 16 ##问题
     fig, ax = plt.subplots(figsize=(5,4)) #修改画幅
     ax2 = ax.twinx()
 
@@ -2852,7 +2851,7 @@ def plot_3d_surface_from_3d_heatmap(
     else:
         raise ValueError("alpha_mode must be 'value' or 'inverse'")
 
-    fig = plt.figure(figsize=(8, 6))
+    fig = plt.figure(figsize=(11, 8))
     ax  = fig.add_subplot(111, projection="3d")
 
     nz = grid_z.shape[2]
@@ -2865,20 +2864,28 @@ def plot_3d_surface_from_3d_heatmap(
     # ——— color-bar ———
     sm = cm.ScalarMappable(norm=norm_, cmap=cmap_)
     sm.set_array([])
-    cb = plt.colorbar(sm, ax=ax, shrink=0.7, pad=0.1, aspect=15)
+    cb = plt.colorbar(sm, ax=ax, shrink=0.68, pad=0.06, aspect=18)
     cb.set_label(
         y_col_names[out_idx] if (y_col_names and out_idx < len(y_col_names))
         else f"Output_{out_idx}", fontsize=12)
 
     # ——— 轴设置 ———
-    ax.set_xlabel(axes_labels[0])
-    ax.set_ylabel(axes_labels[1])
-    ax.set_zlabel(axes_labels[2])
+    xlab = str(axes_labels[0]).replace(" (LN scale)", "\n(LN scale)")
+    ylab = str(axes_labels[1]).replace(" (LN scale)", "\n(LN scale)")
+    zlab = str(axes_labels[2]).replace(" (LN scale)", "\n(LN scale)")
+    ax.set_xlabel(xlab, labelpad=14, fontsize=12)
+    ax.set_ylabel(ylab, labelpad=16, fontsize=12)
+    ax.set_zlabel(zlab, labelpad=10, fontsize=12)
+    ax.tick_params(axis="x", labelsize=10, pad=2)
+    ax.tick_params(axis="y", labelsize=10, pad=2)
+    ax.tick_params(axis="z", labelsize=10, pad=2)
     for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
         axis.set_major_locator(MaxNLocator(nbins=5, integer=True))
     ax.grid(False)
 
+    # 3D 文本边界在高 DPI 下容易被裁切，显式留白。
+    fig.subplots_adjust(left=0.02, right=0.86, bottom=0.05, top=0.98)
     out_jpg = os.path.join(out_dir, f"surface3d_output_{out_idx+1}.jpg")
-    plt.savefig(out_jpg, dpi=700, bbox_inches="tight")
+    plt.savefig(out_jpg, dpi=700, bbox_inches="tight", pad_inches=0.22)
     plt.close()
     print(f"[INFO] 3D Color Surface saved → {out_jpg}")

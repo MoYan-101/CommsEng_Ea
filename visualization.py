@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 import joblib
 import optuna
+from data_preprocessing.scaler_utils import load_scaler
 
 from utils import (
     ensure_dir,
@@ -157,6 +158,60 @@ def _normalize_shap_values(shap_data):
     return shap_data
 
 
+def _resolve_model_log_spec(model_meta):
+    loader_cfg = model_meta.get("loader_config", {}) if isinstance(model_meta, dict) else {}
+    raw_cols = loader_cfg.get("log_transform_cols", []) or []
+    log_cols = {str(c).strip() for c in raw_cols if str(c).strip()}
+    try:
+        log_eps = float(loader_cfg.get("log_transform_eps", 1e-8))
+    except (TypeError, ValueError):
+        log_eps = 1e-8
+    if log_eps <= 0:
+        log_eps = 1e-8
+    return log_cols, log_eps
+
+
+def _restore_shap_x_to_model_input_domain(X_model_domain, scaler_x=None, scale_cols_idx=None):
+    if X_model_domain is None:
+        return None
+    X_disp = np.asarray(X_model_domain, dtype=np.float32).copy()
+    if scaler_x is None:
+        return X_disp
+    cols = list(scale_cols_idx or [])
+    if not cols:
+        return X_disp
+    n_scale = int(getattr(scaler_x, "n_features_in_", len(cols)))
+    if len(cols) != n_scale:
+        print(
+            f"[WARN] SHAP scaler mismatch: len(scale_cols_idx)={len(cols)} "
+            f"!= scaler_x.n_features_in_={n_scale}; skip inverse standardization."
+        )
+        return X_disp
+    X_disp[:, cols] = scaler_x.inverse_transform(X_disp[:, cols])
+    return X_disp
+
+
+def _apply_exp_to_shap_display_cols(shap_data, log_cols):
+    if not log_cols:
+        return shap_data
+    X_full = shap_data.get("X_full", None)
+    if X_full is None:
+        return shap_data
+    X_arr = np.asarray(X_full, dtype=np.float32).copy()
+    x_names = [str(c).strip() for c in shap_data.get("x_col_names", [])]
+    idx_map = {name: i for i, name in enumerate(x_names)}
+    applied = []
+    for c in sorted(log_cols):
+        idx = idx_map.get(c, None)
+        if idx is None:
+            continue
+        X_arr[:, idx] = np.exp(X_arr[:, idx])
+        applied.append(c)
+    shap_data["X_full"] = X_arr
+    shap_data["display_exp_cols"] = applied
+    return shap_data
+
+
 def generate_shap_plots(csv_name, model_types, top_n, config=None):
     """
     从 shap_data.pkl 生成各种 SHAP 图；已插入 one-hot 合并逻辑
@@ -180,16 +235,53 @@ def generate_shap_plots(csv_name, model_types, top_n, config=None):
             print(f"[WARN] shap_data not found => {shap_data_path}")
             continue
 
-        # ----- 1) 读入 & 合并 one-hot -----
+        # ----- 1) 读入 + 还原展示域 + 合并 one-hot -----
+        model_dir = get_model_dir(csv_name, mtype, run_id=run_id)
+        model_meta_path = os.path.join(model_dir, "metadata.pkl")
+        model_meta = joblib.load(model_meta_path) if os.path.exists(model_meta_path) else meta_data
+        log_cols, log_eps = _resolve_model_log_spec(model_meta)
+        onehot_groups_m = model_meta.get("onehot_groups", onehot_groups)
+        case_map_m = {
+            c.lower(): c
+            for c in model_meta.get("x_col_names", meta_data.get("x_col_names", []))
+        } or orig_case_map
+
+        scale_cols_idx = model_meta.get("scale_cols_idx", model_meta.get("numeric_cols_idx", []))
+        scale_idx_path = os.path.join(model_dir, f"scale_cols_idx_{mtype}.npy")
+        if os.path.exists(scale_idx_path):
+            scale_cols_idx = np.load(scale_idx_path).tolist()
+        sx_path = os.path.join(model_dir, f"scaler_x_{mtype}.pkl")
+        scaler_x = load_scaler(sx_path) if os.path.exists(sx_path) else None
+
         raw_shap_data = joblib.load(shap_data_path)
         raw_shap_data = _normalize_shap_values(raw_shap_data)
+
+        X_model_domain = raw_shap_data.get("X_full", None)
+        if X_model_domain is not None:
+            X_model_domain = np.asarray(X_model_domain, dtype=np.float32)
+            raw_shap_data["X_full"] = _restore_shap_x_to_model_input_domain(
+                X_model_domain,
+                scaler_x=scaler_x,
+                scale_cols_idx=scale_cols_idx
+            )
+
         shap_data = merge_onehot_shap(
             raw_shap_data,
-            onehot_groups=onehot_groups,
-            case_map=orig_case_map
+            onehot_groups=onehot_groups_m,
+            case_map=case_map_m
         )
         if shap_group_by_raw:
             shap_data = merge_shap_to_raw_features(shap_data)
+        shap_data = _apply_exp_to_shap_display_cols(shap_data, log_cols=log_cols)
+        shap_data["display_log_transform_cols"] = sorted(log_cols)
+        shap_data["display_log_transform_eps"] = float(log_eps)
+        if X_model_domain is not None:
+            shap_data["X_full_model_domain"] = np.asarray(X_model_domain, dtype=np.float32)
+            shap_data["x_col_names_model_domain"] = list(raw_shap_data.get("x_col_names", []))
+        X_display_domain = shap_data.get("X_full", None)
+        if X_display_domain is not None:
+            shap_data["X_full_display_domain"] = np.asarray(X_display_domain, dtype=np.float32).copy()
+        joblib.dump(shap_data, os.path.join(shap_dir, "shap_data_display.pkl"))
 
         # ----- 2) 全局图 -----
         try:

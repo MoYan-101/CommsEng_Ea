@@ -225,6 +225,48 @@ def _get_base_vector(stats_dict, x_col_names):
     return base_vec
 
 
+def _resolve_log_transform_spec(stats_dict):
+    """
+    Read per-model log-transform settings from metadata.
+    Returns:
+      - log_cols: set[str] in model-input domain (already logged during training)
+      - log_eps: float clamp epsilon for forward log transform
+    """
+    loader_cfg = stats_dict.get("loader_config", {}) if isinstance(stats_dict, dict) else {}
+    raw_cols = loader_cfg.get("log_transform_cols", []) or []
+    log_cols = {str(c).strip() for c in raw_cols if str(c).strip()}
+    try:
+        log_eps = float(loader_cfg.get("log_transform_eps", 1e-8))
+    except (TypeError, ValueError):
+        log_eps = 1e-8
+    if log_eps <= 0:
+        log_eps = 1e-8
+    return log_cols, log_eps
+
+
+def _display_axis_minmax(stats_dict, col_name, log_cols):
+    """
+    Build display-domain axis range.
+    - non-log columns: keep metadata min/max
+    - log columns: metadata stores ln-domain range, so exp back to raw scale
+    """
+    info = stats_dict["continuous_cols"][col_name]
+    vmin = float(info["min"])
+    vmax = float(info["max"])
+    if col_name in log_cols:
+        return float(np.exp(vmin)), float(np.exp(vmax))
+    return vmin, vmax
+
+
+def _to_model_domain_value(raw_value, col_name, log_cols, log_eps):
+    """
+    Convert display-domain value to model-input-domain value for a single feature.
+    """
+    if col_name in log_cols:
+        return float(np.log(np.clip(float(raw_value), log_eps, None)))
+    return float(raw_value)
+
+
 def _get_group_entries(stats_dict, x_col_names):
     groups = []
     onehot_groups = stats_dict.get("onehot_groups", [])
@@ -343,18 +385,17 @@ def heatmap_2d_inference(model, x_name, y_name,
                          stats_dict, x_col_names, scale_cols_idx,
                          scaler_x, scaler_y,
                          outdir_m, n_points=50,
-                         group_templates=None, group_weights=None):
+                         group_templates=None, group_weights=None,
+                         log_transform_cols=None, log_transform_eps=1e-8):
     """把你原先那段 2D 推断代码完整挪进来──除了 x_name/y_name 改成形参"""
     if (x_name not in stats_dict["continuous_cols"]
             or y_name not in stats_dict["continuous_cols"]):
         print(f"[WARN] {x_name}/{y_name} 不在连续列中 => 跳过 2D")
         return
 
-    xinfo = stats_dict["continuous_cols"][x_name]
-    yinfo = stats_dict["continuous_cols"][y_name]
-
-    xv = np.linspace(xinfo["min"], xinfo["max"], n_points)
-    yv = np.linspace(yinfo["min"], yinfo["max"], n_points)
+    log_cols = set(log_transform_cols or [])
+    xv = np.linspace(*_display_axis_minmax(stats_dict, x_name, log_cols), n_points)
+    yv = np.linspace(*_display_axis_minmax(stats_dict, y_name, log_cols), n_points)
     grid_x, grid_y = np.meshgrid(xv, yv)
 
     # —— baseline（训练集均值） ——
@@ -374,8 +415,12 @@ def heatmap_2d_inference(model, x_name, y_name,
     for i in trange(H, desc=f"2D({x_name},{y_name})", ncols=100):
         for j in range(W):
             batch = group_templates.copy()
-            batch[:, x_col_names.index(x_name)] = grid_x[i, j]
-            batch[:, x_col_names.index(y_name)] = grid_y[i, j]
+            batch[:, x_col_names.index(x_name)] = _to_model_domain_value(
+                grid_x[i, j], x_name, log_cols, log_transform_eps
+            )
+            batch[:, x_col_names.index(y_name)] = _to_model_domain_value(
+                grid_y[i, j], y_name, log_cols, log_transform_eps
+            )
             real = _weighted_predict(model, batch, group_weights, scaler_x, scaler_y, scale_cols_idx)
             heatmap_pred[i, j, :] = np.maximum(real.reshape(-1), 0)
 
@@ -395,17 +440,19 @@ def heatmap_3d_inference(model, axes_names, stats_dict,
                          x_col_names, scale_cols_idx,
                          scaler_x, scaler_y,
                          outdir_m, n_points=40,
-                         group_templates=None, group_weights=None):
+                         group_templates=None, group_weights=None,
+                         log_transform_cols=None, log_transform_eps=1e-8):
     """axes_names = [x_name, y_name, z_name]"""
     x_name, y_name, z_name = axes_names
 
-    def _mm(col):
-        info = stats_dict["continuous_cols"][col]
-        return info["min"], info["max"]
+    log_cols = set(log_transform_cols or [])
 
-    xv = np.linspace(*_mm(x_name), n_points)
-    yv = np.linspace(*_mm(y_name), n_points)
-    zv = np.linspace(*_mm(z_name), n_points)
+    def _mm_display(col):
+        return _display_axis_minmax(stats_dict, col, log_cols)
+
+    xv = np.linspace(*_mm_display(x_name), n_points)
+    yv = np.linspace(*_mm_display(y_name), n_points)
+    zv = np.linspace(*_mm_display(z_name), n_points)
     grid_x, grid_y, grid_z = np.meshgrid(xv, yv, zv, indexing="ij")
 
     base_vec = _get_base_vector(stats_dict, x_col_names)
@@ -425,9 +472,15 @@ def heatmap_3d_inference(model, axes_names, stats_dict,
         for j in range(W):
             for k in range(D):
                 batch = group_templates.copy()
-                batch[:, x_col_names.index(x_name)] = grid_x[i, j, k]
-                batch[:, x_col_names.index(y_name)] = grid_y[i, j, k]
-                batch[:, x_col_names.index(z_name)] = grid_z[i, j, k]
+                batch[:, x_col_names.index(x_name)] = _to_model_domain_value(
+                    grid_x[i, j, k], x_name, log_cols, log_transform_eps
+                )
+                batch[:, x_col_names.index(y_name)] = _to_model_domain_value(
+                    grid_y[i, j, k], y_name, log_cols, log_transform_eps
+                )
+                batch[:, x_col_names.index(z_name)] = _to_model_domain_value(
+                    grid_z[i, j, k], z_name, log_cols, log_transform_eps
+                )
                 real = _weighted_predict(model, batch, group_weights, scaler_x, scaler_y, scale_cols_idx)
                 heatmap_pred[i, j, k, :] = np.maximum(real.reshape(-1), 0)
 
@@ -539,6 +592,7 @@ def inference_main():
                 f"scale_cols_idx ({len(scale_cols_idx)}) 与 "
                 f"scaler_x.n_features_in_ ({scaler_x.n_features_in_}) 不匹配！"
             )
+        log_transform_cols, log_transform_eps = _resolve_log_transform_spec(stats_dict)
         # ----------------------------------------------------------
         # 根据 heatmap_axes 的长度自动分支
         # ----------------------------------------------------------
@@ -566,7 +620,9 @@ def inference_main():
                                  scaler_x, scaler_y,
                                  outdir_m, n_points,
                                  group_templates=group_templates,
-                                 group_weights=group_weights)
+                                 group_weights=group_weights,
+                                 log_transform_cols=log_transform_cols,
+                                 log_transform_eps=log_transform_eps)
 
         elif dim_axes == 3:
             # ① 先跑 C(3,2) 三张 2D
@@ -577,7 +633,9 @@ def inference_main():
                                      scaler_x, scaler_y,
                                      outdir_m, n_points,
                                      group_templates=group_templates,
-                                     group_weights=group_weights)
+                                     group_weights=group_weights,
+                                     log_transform_cols=log_transform_cols,
+                                     log_transform_eps=log_transform_eps)
             # ② 再跑 3D
             if enable_3d and mtype not in skip_3d_models:
                 heatmap_3d_inference(model,
@@ -586,7 +644,9 @@ def inference_main():
                                      scaler_x, scaler_y,
                                      outdir_m, n_points,
                                      group_templates=group_templates,
-                                     group_weights=group_weights)
+                                     group_weights=group_weights,
+                                     log_transform_cols=log_transform_cols,
+                                     log_transform_eps=log_transform_eps)
             else:
                 print(f"[INFO] Skip 3D heatmap for {mtype}.")
         else:
