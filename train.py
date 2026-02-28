@@ -11,6 +11,7 @@ train.py
 
 import yaml
 import os
+import argparse
 import numpy as np
 import torch
 import joblib
@@ -703,10 +704,26 @@ def create_model_by_type(model_type, config, random_seed=42, input_dim=None):
 
 
 
-def train_main():
-    config_path = os.path.join(os.path.dirname(__file__), "configs", "config.yaml")
+def _parse_cli_args():
+    parser = argparse.ArgumentParser(description="Train models with a selected config file.")
+    parser.add_argument(
+        "--config",
+        dest="config_path",
+        default=os.environ.get("CONFIG_PATH", os.path.join(os.path.dirname(__file__), "configs", "config.yaml")),
+        help="Path to YAML config file (default: CONFIG_PATH env or configs/config.yaml).",
+    )
+    return parser.parse_args()
+
+
+def train_main(config_path=None):
+    if config_path is None:
+        config_path = os.environ.get("CONFIG_PATH", os.path.join(os.path.dirname(__file__), "configs", "config.yaml"))
+    config_path = os.path.abspath(config_path)
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found: {config_path}")
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
+    print(f"[INFO] Using config => {config_path}")
     _configure_torch_runtime()
     _apply_runtime_overrides(config)
     env_alpha = os.environ.get("OVERFIT_ALPHA")
@@ -1385,4 +1402,5 @@ def train_main():
 
 
 if __name__ == "__main__":
-    train_main()
+    args = _parse_cli_args()
+    train_main(args.config_path)

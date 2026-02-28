@@ -18,6 +18,7 @@ visualization.py
 import os
 import re
 import yaml
+import argparse
 import numpy as np
 import pandas as pd
 import joblib
@@ -420,10 +421,26 @@ def plot_optuna_results(config):
     plot_optuna_summary_curve(trials_dict, out_summary)
 
 
-def visualize_main():
-    config_path = os.path.join(os.path.dirname(__file__), "configs", "config.yaml")
+def _parse_cli_args():
+    parser = argparse.ArgumentParser(description="Generate plots with a selected config file.")
+    parser.add_argument(
+        "--config",
+        dest="config_path",
+        default=os.environ.get("CONFIG_PATH", os.path.join(os.path.dirname(__file__), "configs", "config.yaml")),
+        help="Path to YAML config file (default: CONFIG_PATH env or configs/config.yaml).",
+    )
+    return parser.parse_args()
+
+
+def visualize_main(config_path=None):
+    if config_path is None:
+        config_path = os.environ.get("CONFIG_PATH", os.path.join(os.path.dirname(__file__), "configs", "config.yaml"))
+    config_path = os.path.abspath(config_path)
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found: {config_path}")
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
+    print(f"[INFO] Using config => {config_path}")
 
     csv_path = config["data"]["path"]
     if not os.path.isabs(csv_path):
@@ -901,4 +918,5 @@ def visualize_main():
 
 
 if __name__ == "__main__":
-    visualize_main()
+    args = _parse_cli_args()
+    visualize_main(args.config_path)

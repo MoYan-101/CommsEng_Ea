@@ -45,7 +45,13 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 # Global font settings for all plots.
 matplotlib.rcParams["font.family"] = "sans-serif"
-matplotlib.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "DejaVu Sans"]
+matplotlib.rcParams["font.sans-serif"] = [
+    "TeX Gyre Heros",
+    "Nimbus Sans",
+    "Helvetica",
+    "Arial",
+    "DejaVu Sans",
+]
 matplotlib.rcParams["axes.unicode_minus"] = False
 
 #save pt
@@ -240,7 +246,13 @@ def plot_mic_network_heatmap(feature_df: pd.DataFrame,
             plt.style.use("chartlab.mplstyle")
         except Exception:
             pass
-        plt.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "DejaVu Sans"]
+        plt.rcParams["font.sans-serif"] = [
+            "TeX Gyre Heros",
+            "Nimbus Sans",
+            "Helvetica",
+            "Arial",
+            "DejaVu Sans",
+        ]
         plt.rcParams["axes.unicode_minus"] = False
         plt.rcParams["xtick.major.size"] = 0
         plt.rcParams["ytick.major.size"] = 0

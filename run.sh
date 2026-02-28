@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 set -e
+
+if [ "$#" -gt 1 ]; then
+  echo "[ERROR] Usage: bash run.sh [full|test|/path/to/config.yaml]"
+  exit 1
+fi
+
+CONFIG_ARG="${1:-}"
 PY=""
 if command -v conda >/dev/null 2>&1; then
   if [ -z "$CONDA_ENV" ]; then
@@ -17,6 +24,39 @@ if [ -z "$PY" ]; then
     PY="python3 -u"
   fi
 fi
+
+if [ -z "${CONFIG_PATH:-}" ] && [ -n "$CONFIG_ARG" ] && [ "$CONFIG_ARG" != "full" ] && [ "$CONFIG_ARG" != "test" ]; then
+  CONFIG_PATH="$CONFIG_ARG"
+fi
+
+if [ -z "${CONFIG_PATH:-}" ]; then
+  CONFIG_PROFILE="${CONFIG_PROFILE:-full}"
+  if [ -n "$CONFIG_ARG" ]; then
+    CONFIG_PROFILE="$CONFIG_ARG"
+  fi
+  case "$CONFIG_PROFILE" in
+    full)
+      CONFIG_PATH="configs/config.full.yaml"
+      ;;
+    test)
+      CONFIG_PATH="configs/config.test.yaml"
+      ;;
+    *)
+      echo "[ERROR] Unknown CONFIG_PROFILE='$CONFIG_PROFILE'. Use full/test or set CONFIG_PATH."
+      exit 1
+      ;;
+  esac
+fi
+
+if [ ! -f "$CONFIG_PATH" ]; then
+  echo "[ERROR] Config file not found: $CONFIG_PATH"
+  exit 1
+fi
+
+if [ "${CONFIG_PATH#/}" = "$CONFIG_PATH" ]; then
+  CONFIG_PATH="$(pwd)/$CONFIG_PATH"
+fi
+export CONFIG_PATH
 
 if [ "${ALLOW_CONCURRENT_PIPELINE:-0}" != "1" ] && command -v flock >/dev/null 2>&1; then
   LOCK_FILE="${LOCK_FILE:-.run_pipeline.lock}"
@@ -101,6 +141,7 @@ if [ "${ALLOW_CONCURRENT_TRAIN:-0}" != "1" ]; then
   fi
 fi
 echo "[INFO] CPU_TOTAL=$CPU_TOTAL OPTUNA_N_JOBS=$OPTUNA_N_JOBS MODEL_N_JOBS=$MODEL_N_JOBS CATBOOST_THREAD_COUNT=$CATBOOST_THREAD_COUNT XGB_N_JOBS=$XGB_N_JOBS SVM_N_JOBS=$SVM_N_JOBS TORCH_NUM_THREADS=$TORCH_NUM_THREADS TORCH_NUM_INTEROP_THREADS=$TORCH_NUM_INTEROP_THREADS OMP_NUM_THREADS=$OMP_NUM_THREADS"
+echo "[INFO] CONFIG_PATH=$CONFIG_PATH"
 for alpha in "${ALPHAS[@]}"; do
   if [ -n "$alpha" ]; then
     export OVERFIT_ALPHA="$alpha"
@@ -111,7 +152,7 @@ for alpha in "${ALPHAS[@]}"; do
   fi
   export RUN_ID
   echo "[INFO] RUN_ID=$RUN_ID OVERFIT_ALPHA=${OVERFIT_ALPHA:-<config>}"
-  $PY train.py
-  $PY inference.py
-  $PY visualization.py
+  $PY train.py --config "$CONFIG_PATH"
+  $PY inference.py --config "$CONFIG_PATH"
+  $PY visualization.py --config "$CONFIG_PATH"
 done

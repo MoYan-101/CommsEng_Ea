@@ -81,7 +81,9 @@ python -m pip -V
 
 ```bash
 cd /public/home/user2/CommsEng
-grep -n "path:" configs/config.yaml
+grep -n "path:" configs/config.full.yaml
+# 或测试配置
+grep -n "path:" configs/config.test.yaml
 ls -lh data/Main_20260128_cleansed.csv
 ```
 
@@ -91,6 +93,18 @@ ls -lh data/Main_20260128_cleansed.csv
 cd /public/home/user2/CommsEng
 mkdir -p logs
 sbatch --export=ALL,CONDA_ENV=mlcpu,OVERFIT_ALPHA_LIST=0.0 slurm/run_pipeline_cpu.sbatch
+```
+
+选择配置（默认 `full`）：
+
+```bash
+sbatch --export=ALL,CONDA_ENV=mlcpu,CONFIG_PROFILE=test,OVERFIT_ALPHA_LIST=0.0 slurm/run_pipeline_cpu.sbatch
+```
+
+或传入自定义配置文件：
+
+```bash
+sbatch --export=ALL,CONDA_ENV=mlcpu,CONFIG_PATH=configs/config.test.yaml,OVERFIT_ALPHA_LIST=0.0 slurm/run_pipeline_cpu.sbatch
 ```
 
 单任务串行多个 alpha：

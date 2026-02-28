@@ -18,17 +18,26 @@ visualization in one pipeline.
    - Plots CV metrics, residuals, SHAP, heatmaps, and other figures.
 
 ## Quick Start
-1) Edit `configs/config.yaml` (data path, model list, Optuna settings).
+1) Choose and edit one config file:
+   - Full training: `configs/config.full.yaml`
+   - Fast code test: `configs/config.test.yaml`
 2) Run:
 ```bash
-bash run.sh
+bash run.sh full
+# or
+bash run.sh test
 ```
 
 ## Run Options
 `run.sh` will prompt for `overfit_penalty_alpha` values.
 - Enter one or multiple values (comma-separated), e.g. `0.0,0.03`.
-- Press Enter to use the value in `configs/config.yaml`.
+- Press Enter to use the value in the selected config file.
 - Each alpha gets its own `RUN_ID` suffix to avoid overwriting results.
+
+Config selection:
+- Positional argument: `bash run.sh full` / `bash run.sh test`
+- Environment variable: `CONFIG_PROFILE=full|test`
+- Explicit file path: `CONFIG_PATH=configs/xxx.yaml bash run.sh`
 
 You can skip the prompt:
 ```bash
@@ -109,7 +118,7 @@ The default pipeline is implemented in `data_preprocessing/data_loader_modified.
 - SVM SHAP uses KernelExplainer and can be slow on large datasets.
 
 ## 对数变换与展示尺度说明（当前配置）
-以下逻辑对应当前 `configs/config.yaml`。
+以下逻辑对应当前 `configs/config.full.yaml`。
 
 1. 基础规则
 - 仅对 `data_loader.log_transform_cols` 指定的数值列做对数变换，公式为：

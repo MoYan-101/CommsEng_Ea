@@ -1,0 +1,277 @@
+data:
+  path: /home/mo/Documents/MY/CommsEng/CommsEng_Ea/./data/Ea_20260226_cleansed.csv
+  input_len: 13
+  output_len: 1
+  test_size: 0.3
+  random_seed: 98
+data_loader:
+  impute_method: kde
+  preserve_null: true
+  y_cols:
+  - Methanol based Ea (kJ/mol)
+  save_conflict_report: false
+  conflict_report_prefix: duplicate_input
+  aggregate_duplicate_inputs: false
+  duplicate_target_agg: median
+  promoter_ratio_cols:
+  - Promoter 1 ratio (Promoter 1:Cu)
+  - Promoter 2 ratio (Promoter 2:Cu)
+  element_embedding: advanced
+  promoter_onehot: true
+  promoter_interaction_features: true
+  promoter_pair_onehot: true
+  promoter_pair_onehot_min_count: 2
+  promoter_pair_onehot_max_categories: 64
+  promoter_interaction_eps: 1e-8
+  log_transform_cols:
+  - Calcination time (h)
+  - Molar ratio (Zn:Cu)
+  log_transform_cols_extra_for:
+    SVM:
+    - H2/CO2 ratio (-)
+    - Promoter 1 ratio (Promoter 1:Cu)
+    - Promoter 2 ratio (Promoter 2:Cu)
+    ANN:
+    - H2/CO2 ratio (-)
+    - Promoter 1 ratio (Promoter 1:Cu)
+    - Promoter 2 ratio (Promoter 2:Cu)
+  log_transform_eps: 1e-8
+preprocessing:
+  standardize_input: true
+  standardize_output: true
+  standardize_all_features: true
+  standardize_all_features_for:
+  - SVM
+  - ANN
+  bounded_output: false
+  bounded_output_columns:
+  - Methanol selectivity (%)
+  - CO2 conversion efficiency (%)
+  - CO selectivity (%)
+model:
+  types:
+  - RF
+  - CatBoost
+  - DT
+  - ANN
+  - XGB
+  - SVM
+  ann_params:
+    epochs: 6000
+  dt_params:
+    random_state: 42
+  rf_params:
+    random_state: 42
+    n_jobs: 12
+  catboost_params:
+    random_seed: 42
+    early_stopping_rounds: 50
+    thread_count: 12
+    random_strength: 1.0
+    bagging_temperature: 0.0
+    rsm: 1.0
+  xgb_params:
+    random_seed: 42
+    early_stopping_rounds: 50
+    n_jobs: 12
+    min_child_weight: 1.0
+    gamma: 0.0
+    subsample: 1.0
+    colsample_bytree: 1.0
+  svm_params:
+    kernel: rbf
+    C: 10.0
+    epsilon: 0.1
+    gamma: scale
+    degree: 3
+    coef0: 0.0
+    max_iter: 20000
+    n_jobs: 12
+loss:
+  type: mse
+training:
+  log_interval: 5
+evaluation:
+  save_loss_curve: true
+  save_scatter_with_marginals_plot: true
+  save_correlation: true
+  save_models_evaluation_bar: true
+  save_data_analysis_plots: true
+  do_cross_validation: true
+  save_shap: true
+  shap_group_by_raw_features: true
+  save_multi_model_residual_plot: true
+  save_optuna: true
+inference:
+  models:
+  - CatBoost
+  - XGB
+  - SVM
+  max_combinations: 2000
+  n_points: 50
+  enable_3d_heatmap: true
+  skip_3d_models:
+  - SVM
+  heatmap_axes:
+  - Temperature (°C)
+  - GHSV (mL/g.h) (LN scale)
+  - Pressure (bar)
+  confusion_axes:
+    row_name: Promoter 1
+    col_name: Type of sysnthesis procedure
+optuna:
+  overfit_penalty_alpha: 0.0
+  enable: true
+  n_jobs: 2
+  trials: 1400
+  models:
+  - RF
+  - CatBoost
+  - DT
+  - ANN
+  - XGB
+  - SVM
+  slice_params:
+    ANN:
+    - hidden_dims
+    - learning_rate
+    - dropout
+    - weight_decay
+    - batch_size
+    RF:
+    - n_estimators
+    - max_depth
+    - ccp_alpha
+    DT:
+    - max_depth
+    - ccp_alpha
+    CatBoost:
+    - iterations
+    - learning_rate
+    - depth
+    - l2_leaf_reg
+    - random_strength
+    - bagging_temperature
+    - rsm
+    XGB:
+    - n_estimators
+    - learning_rate
+    - max_depth
+    - reg_alpha
+    - reg_lambda
+    - min_child_weight
+    - gamma
+    - subsample
+    - colsample_bytree
+    SVM:
+    - kernel
+    - C
+    - epsilon
+    - gamma
+  ann_params:
+    hidden_dims_choices:
+    - - 8
+      - 8
+    - - 16
+      - 16
+    - - 8
+      - 16
+      - 8
+    - - 16
+      - 32
+      - 16
+    - - 16
+      - 64
+      - 16
+    - - 16
+      - 32
+      - 32
+      - 16
+    - - 16
+      - 32
+      - 64
+      - 32
+      - 16
+    dropout_min: 0.0
+    dropout_max: 0.1
+    learning_rate_min: 1e-5
+    learning_rate_max: 1e-2
+    weight_decay_min: 1e-6
+    weight_decay_max: 5e-4
+    batch_size_choices:
+    - 64
+    - 128
+    - 256
+    optimizer_choices:
+    - AdamW
+    activation_choices:
+    - ReLU
+    - leakyrelu
+    tuning_epochs: 500
+    early_stopping: true
+    patience: 5
+    log_interval: 5
+  rf_params:
+    n_estimators_min: 50
+    n_estimators_max: 300
+    max_depth_min: 2
+    max_depth_max: 12
+    ccp_alpha_min: 0.0
+    ccp_alpha_max: 0.03
+    min_samples_leaf_min: 1
+    min_samples_leaf_max: 9
+  dt_params:
+    max_depth_min: 4
+    max_depth_max: 12
+    ccp_alpha_min: 0.0
+    ccp_alpha_max: 0.03
+  catboost_params:
+    iterations_min: 200
+    iterations_max: 1000
+    learning_rate_min: 0.01
+    learning_rate_max: 0.1
+    depth_min: 4
+    depth_max: 12
+    l2_leaf_reg_min: 1.0
+    l2_leaf_reg_max: 5.0
+    random_strength_min: 1e-3
+    random_strength_max: 5.0
+    bagging_temperature_min: 0.0
+    bagging_temperature_max: 10.0
+    rsm_min: 0.6
+    rsm_max: 1.0
+  xgb_params:
+    n_estimators_min: 100
+    n_estimators_max: 500
+    learning_rate_min: 0.01
+    learning_rate_max: 0.1
+    max_depth_min: 3
+    max_depth_max: 10
+    reg_alpha_min: 1e-8
+    reg_alpha_max: 1e-1
+    reg_lambda_min: 1.0
+    reg_lambda_max: 10.0
+    min_child_weight_min: 1.0
+    min_child_weight_max: 20.0
+    gamma_min: 1e-8
+    gamma_max: 1.0
+    subsample_min: 0.6
+    subsample_max: 1.0
+    colsample_bytree_min: 0.6
+    colsample_bytree_max: 1.0
+  svm_params:
+    kernel_choices:
+    - rbf
+    - poly
+    - sigmoid
+    C_min: 1e-2
+    C_max: 300.0
+    epsilon_min: 0.001
+    epsilon_max: 1.0
+    gamma_min: 1e-5
+    gamma_max: 1e-1
+    degree_min: 2
+    degree_max: 6
+    coef0_min: 0.0
+    coef0_max: 2.0
+    max_iter: 20000
