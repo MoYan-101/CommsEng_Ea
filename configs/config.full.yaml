@@ -120,8 +120,8 @@ inference:
   models: ["CatBoost", "XGB", "SVM"]
   max_combinations: 2000
   n_points: 50                 # ← 原来就有的话保留
-  enable_3d_heatmap: true # ← 3DHeatmap-X 总开关
-  skip_3d_models: ["SVM"]      # ← 可选：指定模型跳过 3D
+  enable_3d_heatmap: false # ← 3DHeatmap-X 总开关
+  # skip_3d_models: ["SVM"]      # ← 可选：指定模型跳过 3D
   heatmap_axes: # ← 统一写这里，长度决定维度
     - "Temperature (°C)"
     - "GHSV (mL/g.h) (LN scale)"
@@ -135,7 +135,7 @@ optuna:
   overfit_penalty_alpha: 0.0
   enable: true
   n_jobs: 1
-  trials: 1400
+  trials: 800
   models: ["RF", "CatBoost", "DT", "ANN", "XGB", "SVM"]
   slice_params:
     ANN: ["hidden_dims", "learning_rate", "dropout", "weight_decay", "batch_size"]
