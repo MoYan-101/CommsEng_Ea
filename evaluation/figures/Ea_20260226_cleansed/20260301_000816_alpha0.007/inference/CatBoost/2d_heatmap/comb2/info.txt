@@ -1,0 +1,2 @@
+X-axis : GHSV_(mL_g.h)_(LN_scale)
+Y-axis : Pressure_(bar)
